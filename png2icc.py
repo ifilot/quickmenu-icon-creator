@@ -7,8 +7,8 @@
 from qic import QIC
 
 def main():
-    infile = 'png/pop.png'
-    outfile = 'icc/POP.ICC'
+    infile = 'png/dune2.png'
+    outfile = 'icc/DUNE2.ICC'
 
     # perform conversion
     q = QIC()
