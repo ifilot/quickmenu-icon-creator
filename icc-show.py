@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+#
+# Purpose: Visualize a .ICC file
+#
+
 from qic import QIC
 
 def main():    
