@@ -15,7 +15,7 @@ def main():
     q.png2icc(infile, outfile)
 
     # visualize the result
-    q.show_icc(outfile)
+    q.compare_icc(infile, outfile)
 
 if __name__ == '__main__':
     main()

@@ -49,6 +49,22 @@ class QIC:
         large = img.resize((256,256), Image.NEAREST)
         print("Expanding icon to 256 x 256 px and visualizing result.")
         large.show()
+        
+    def compare_icc(self, pngfile, iccfile):
+        """
+        Compare a PNG file with an ICC file
+        """
+        print("Reading PNG: %s" % pngfile)
+        imgsource = Image.open(pngfile)
+        largepng = imgsource.resize((256,256), Image.NEAREST)
+        
+        print("Reading ICC: %s" % iccfile)
+        data = self.__read_icon(iccfile)
+        img = self.__icc2img(data)
+        largeicc = img.resize((256,256), Image.NEAREST)
+        
+        comp = Image.fromarray(np.hstack((np.array(largepng),np.array(largeicc))))    
+        comp.show()
 
     def __icc2img(self, data):
         """

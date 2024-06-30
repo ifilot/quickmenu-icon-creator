@@ -11,7 +11,7 @@ icons are stored in Quick Menu in an internal archive, but can be exported to or
 imported from `.icc` files. This repository contains a set of Python-based
 scripts to read those `.icc` files or to convert `.png` files to `.icc` files.
 
-![Quick Menu screenshot](img/qm-menu.png)
+![Quick Menu screenshot](img/example-conversion.png)
 
 ## ICC File format
 
