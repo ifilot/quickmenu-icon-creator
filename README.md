@@ -11,7 +11,10 @@ icons are stored in Quick Menu in an internal archive, but can be exported to or
 imported from `.icc` files. This repository contains a set of Python-based
 scripts to read those `.icc` files or to convert `.png` files to `.icc` files.
 
-![Quick Menu screenshot](img/example-conversion.png)
+![Dune II source and EGA conversion variants, including LAB40](examples/dune2/comparison.png)
+
+The LAB40 result is the fifth column, labeled "Perceptual / 40% diffusion".
+The imported result is shown below under **LAB40 imported into QuickMenu**.
 
 ## ICC File format
 
@@ -40,7 +43,47 @@ color is then chosen. Although this conversion is automatic, it should be noted
 that this is not always the most ideal result and the user is recommended to
 make further adjustment to the final icon in Quick Menu.
 
-![Quick Menu screenshot](img/qm-icon-creation.png)
+## Improved EGA conversion
+
+The original converter matches colors by RGB distance using an approximate
+palette. This can turn the Dune II soldier's olive armor into gray or black.
+You can opt into the standard 16-color EGA palette, perceptual CIELAB matching,
+and partial Floyd–Steinberg error diffusion:
+
+```python
+from qic import QIC
+
+q = QIC(palette='ega')
+q.png2icc('png/dune2.png', 'icc/DUNE2_NEW.ICC', metric='lab', dither=0.4)
+q.icc2png('icc/DUNE2_NEW.ICC', 'png/dune2-new.png')
+```
+
+`dither=0` disables diffusion; `dither=1` diffuses the full error. At 32x32,
+strong diffusion can obscure small features. The transparency threshold remains
+alpha > 100, and error does not spread into or out of transparent pixels.
+`QIC()` preserves the original palette and conversion defaults.
+
+Run `python3 dune2-compare.py` to reproduce four ICC/PNG alternatives and
+`examples/dune2/comparison.png`, with enlarged previews and actual-size views
+against gray, blue, and black. The original DUNE2.ICC is preserved. All
+candidate PNGs are decoded from their ICC files and checked for EGA colors,
+binary transparency, and the original silhouette. EGA has no dark olive color;
+pixel editing is still useful for emphasizing the helmet and armor at this size.
+
+### LAB40 imported into QuickMenu
+
+This DOSBox capture shows `DUNE2_LAB40.ICC` imported into QuickMenu's icon
+editor, including its transparency mask and previews. QuickMenu's display
+palette differs from the standard EGA RGB values used in the comparison above;
+the imported icon retains the same EGA color indices.
+
+![LAB40 Dune II icon imported into QuickMenu's icon editor](img/qm-icon-creation-lab40.png)
+
+Recreate the imported file with:
+
+```bash
+python3 png2icc.py png/dune2.png icc/DUNE2_LAB40.ICC --algorithm lab40
+```
 
 ## Dependencies
 
@@ -58,8 +101,26 @@ pip install -r requirements.txt
 
 1. Clone this repository.
 2. Place source `.PNG` files in the `.png` folder
-3. Use `png2icc.py` to convert `.png` files to `.icc` files. Note that you need
-   to adjust the paths in this file.
+3. Select an algorithm and specify the input and output paths:
+
+```bash
+python3 png2icc.py png/dune2.png icc/DUNE2_NEW.ICC --algorithm lab40
+```
+
+LAB40 is the command-line default. Algorithm names are case-insensitive.
+
+| Algorithm | Palette | Color matching | Error diffusion |
+| --- | --- | --- | --- |
+| `legacy` | Original approximate palette | RGB | None |
+| `rgb` | Standard EGA | RGB | None |
+| `lab` | Standard EGA | Perceptual CIELAB | None |
+| `lab40` | Standard EGA | Perceptual CIELAB | 40% |
+| `lab70` | Standard EGA | Perceptual CIELAB | 70% |
+
+Add `--preview png/dune2-new.png` to save a decoded PNG, or `--show` to open
+a comparison in an image viewer. Conversion runs without opening a viewer by
+default. Omitting both paths uses `png/dune2.png` and `icc/DUNE2.ICC` (overwriting
+that output). The Python `QIC()` API retains its original defaults.
 
 ### Visualization
 

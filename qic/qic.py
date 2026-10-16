@@ -5,7 +5,7 @@ class QIC:
     """
     Quickmenu Icon Creator class
     """
-    def __init__(self):
+    def __init__(self, palette='legacy'):
         # define EGA color scheme
         self.colors = [
             (0,0,0),
@@ -25,18 +25,35 @@ class QIC:
             (255,255,0),
             (255,255,255)
         ]
+        if palette == 'ega':
+            self.colors = [
+                (0, 0, 0), (0, 0, 170), (0, 170, 0), (0, 170, 170),
+                (170, 0, 0), (170, 0, 170), (170, 85, 0), (170, 170, 170),
+                (85, 85, 85), (85, 85, 255), (85, 255, 85), (85, 255, 255),
+                (255, 85, 85), (255, 85, 255), (255, 255, 85), (255, 255, 255)
+            ]
+        elif palette != 'legacy':
+            raise ValueError("palette must be 'legacy' or 'ega'")
 
-    def png2icc(self, infile, outfile):
+    def png2icc(self, infile, outfile, *, metric='rgb', dither=0.0):
         """
-        Convert a 32x32 with alpha channel .PNG file to an .ICC file
+        Convert a 32x32 PNG file to an ICC file.
+
+        metric='lab' uses perceptual color distance. dither is the fraction
+        (0..1) of quantization error diffused to adjacent opaque pixels.
+        Defaults preserve the original RGB conversion behavior.
         """
         print('Reading PNG file: %s' % infile)
-        img, ega_array = self.__convert_png_to_icc(infile)
+        img, ega_array = self.__convert_png_to_icc(infile, metric, dither)
         res = self.__build_icc(ega_array)
 
         print('Writing ICC file: %s' % outfile)
         with open(outfile, 'wb') as f:
             f.write(res)
+
+    def icc2png(self, infile, outfile):
+        """Save a transparent 32x32 PNG using this instance's display palette."""
+        self.__icc2img(self.__read_icon(infile)).save(outfile)
 
     def show_icc(self, infile):
         """
@@ -131,27 +148,59 @@ class QIC:
         
         return self.colors[conv[ega]]
 
-    def __convert_png_to_icc(self, filename):
+    @staticmethod
+    def __lab(rgb):
+        """Convert sRGB to CIELAB using the D65 reference white."""
+        rgb = np.asarray(rgb, dtype=np.float64) / 255.0
+        linear = np.where(rgb <= 0.04045, rgb / 12.92,
+                          ((rgb + 0.055) / 1.055) ** 2.4)
+        xyz = linear @ np.array([
+            [0.4124564, 0.2126729, 0.0193339],
+            [0.3575761, 0.7151522, 0.1191920],
+            [0.1804375, 0.0721750, 0.9503041]])
+        xyz /= np.array([0.95047, 1.0, 1.08883])
+        delta = 6 / 29
+        f = np.where(xyz > delta ** 3, np.cbrt(xyz),
+                     xyz / (3 * delta ** 2) + 4 / 29)
+        return np.stack((116 * f[..., 1] - 16,
+                         500 * (f[..., 0] - f[..., 1]),
+                         200 * (f[..., 1] - f[..., 2])), axis=-1)
+
+    def __convert_png_to_icc(self, filename, metric='rgb', dither=0.0):
         """
         Convert a .PNG file to a .ICC file, also return the raw pixel
         information of the PNG file
         """
-        original = Image.open(filename)
+        if metric not in ('rgb', 'lab'):
+            raise ValueError("metric must be 'rgb' or 'lab'")
+        if not 0 <= dither <= 1:
+            raise ValueError('dither must be between 0 and 1')
+        with Image.open(filename) as source:
+            if source.size != (32, 32):
+                raise ValueError('ICC icons must be exactly 32x32 pixels')
+            original = source.convert('RGBA')
         pixels_source = original.load()
         
         img = Image.new('RGBA', (32, 32), (0, 0, 0, 0))
         pixels_target = img.load()
         
-        carr = np.array(self.colors)
+        carr = np.array(self.colors, dtype=np.float64)
+        working = np.array(original, dtype=np.float64)[:, :, :3]
+        opaque = np.array(original)[:, :, 3] > 100
+        if metric == 'lab':
+            carr = self.__lab(carr)
+            working = self.__lab(working)
         
         ega_array = np.zeros((32,32,2), dtype=np.uint8)
         
         conv = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15]
         
         for y in range(32):
-            for x in range(32):
+            # Alternate scan direction to reduce directional diffusion streaks.
+            step = -1 if dither and y % 2 else 1
+            for x in (range(32) if step == 1 else range(31, -1, -1)):
                 p = pixels_source[x,y]
-                c = np.array((p[0], p[1], p[2]))
+                c = working[y, x]
                 
                 cc = np.array(carr - c, dtype=np.float64)
                 tune = np.power(cc, 2)
@@ -161,6 +210,15 @@ class QIC:
                 pixels_target[x,y] = (c[0], c[1], c[2], p[3])
                 ega_array[x,y,0] = conv[cd]
                 ega_array[x,y,1] = 0x0F if p[3] > 100 else 0
+                if dither and opaque[y, x]:
+                    error = (working[y, x] - carr[cd]) * dither
+                    for dy, dx, weight in ((0, step, 7 / 16),
+                                           (1, -step, 3 / 16),
+                                           (1, 0, 5 / 16),
+                                           (1, step, 1 / 16)):
+                        yy, xx = y + dy, x + dx
+                        if yy < 32 and 0 <= xx < 32 and opaque[yy, xx]:
+                            working[yy, xx] += error * weight
         
         return img, ega_array
 
